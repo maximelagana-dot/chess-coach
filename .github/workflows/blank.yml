@@ -1,11 +1,8 @@
-name: Construire l'APK
+name: Compiler l'APK
 
 on:
   push:
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -13,36 +10,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extraire le projet
-        run: |
-          mkdir -p work
-          unzip -q projet.zip -d work
-
-      - name: Compiler Stockfish pour Android (arm64)
-        run: |
-          export PATH="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-          git clone --depth 1 --branch sf_17.1 https://github.com/official-stockfish/Stockfish.git sf
-          cd sf/src
-          make -j4 build ARCH=armv8 COMP=ndk
-          mkdir -p "$GITHUB_WORKSPACE/work/app/src/main/jniLibs/arm64-v8a"
-          cp stockfish "$GITHUB_WORKSPACE/work/app/src/main/jniLibs/arm64-v8a/libstockfish.so"
+      - name: Décompresser le projet
+        run: unzip -o chesscoach_tous_echiquiers.zip -d projet
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: Construire l'APK
-        working-directory: work
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Ajouter Stockfish (Android arm64)
+        run: |
+          curl -sSL -o sf.tar https://github.com/official-stockfish/Stockfish/releases/download/sf_17.1/stockfish-android-armv8.tar
+          mkdir sf && tar -xf sf.tar -C sf
+          BIN=$(find sf -type f -name 'stockfish-android-armv8*' | head -1)
+          echo "Binaire trouvé : $BIN"
+          mkdir -p projet/app/src/main/jniLibs/arm64-v8a
+          cp "$BIN" projet/app/src/main/jniLibs/arm64-v8a/libstockfish.so
 
-      - name: Publier l'APK
-        uses: softprops/action-gh-release@v2
+      - name: Compiler
+        working-directory: projet
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Chess Coach Auto ${{ github.run_number }}
-          files: work/app/build/outputs/apk/debug/app-debug.apk
+          name: chesscoach-apk
+          path: projet/app/build/outputs/apk/debug/app-debug.apk
